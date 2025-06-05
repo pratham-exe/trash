@@ -1,6 +1,8 @@
 #include <stddef.h>
+#include <stdint.h>
 #include <unistd.h>
 #define MAX_ALLOWED_UNITS 4096
+#define CLEAR_LSB_BITS(pointer) (((uintptr_t)(pointer)) & 0xfffffffc)
 
 typedef struct header {
 	unsigned int size_of_block;
@@ -92,5 +94,22 @@ void* trash_malloc(size_t size_of_malloc)
 				return NULL;
 			}
 		}
+	}
+}
+
+static void scan_stack_region_and_mark(uintptr_t* start_p, uintptr_t* end_p)
+{
+	head* used_temp;
+	for (; start_p < end_p; start_p++) {
+		uintptr_t* stack_temp = start_p;
+		used_temp = used_block;
+
+		do {
+			if (((uintptr_t*)(used_temp + 1) <= stack_temp)
+				&& (uintptr_t*)(used_temp + 1 + used_temp->size_of_block) > stack_temp) {
+				used_temp->next_block = (head*)(((uintptr_t)used_temp->next_block) | 1);
+				break;
+			}
+		} while ((used_temp = (head*)(CLEAR_LSB_BITS(used_temp->next_block))) != used_block);
 	}
 }
