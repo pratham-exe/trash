@@ -113,3 +113,27 @@ static void scan_stack_region_and_mark(uintptr_t* start_p, uintptr_t* end_p)
 		} while ((used_temp = (head*)(CLEAR_LSB_BITS(used_temp->next_block))) != used_block);
 	}
 }
+
+static void scan_heap_region_and_mark(void)
+{
+	head *used_temp, *used_t;
+	uintptr_t* payload;
+	for (used_temp = (head*)(CLEAR_LSB_BITS(used_block->next_block)); used_temp != used_block;
+		used_temp = (head*)(CLEAR_LSB_BITS(used_temp->next_block))) {
+		if (!((uintptr_t)(used_temp->next_block) & 1)) {
+			continue;
+		}
+		for (payload = (uintptr_t*)(used_temp + 1);
+			payload < (uintptr_t*)(used_temp + 1 + used_temp->size_of_block); payload++) {
+			uintptr_t* payload_temp = payload;
+			used_t = (head*)(CLEAR_LSB_BITS(used_temp->next_block));
+			do {
+				if ((used_t != used_temp) && ((uintptr_t*)(used_t + 1) <= payload_temp)
+					&& (uintptr_t*)(used_t + 1 + used_t->size_of_block) > payload_temp) {
+					used_t->next_block = (head*)(((uintptr_t)used_t->next_block) | 1);
+					break;
+				}
+			} while ((used_t = (head*)(CLEAR_LSB_BITS(used_t->next_block))) != used_temp);
+		}
+	}
+}
