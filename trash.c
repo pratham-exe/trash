@@ -1,5 +1,7 @@
+#include <assert.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <unistd.h>
 #define MAX_ALLOWED_UNITS 4096
 #define CLEAR_LSB_BITS(pointer) (((uintptr_t)(pointer)) & 0xfffffffc)
@@ -136,4 +138,32 @@ static void scan_heap_region_and_mark(void)
 			} while ((used_t = (head*)(CLEAR_LSB_BITS(used_t->next_block))) != used_temp);
 		}
 	}
+}
+
+void trash_init_and_find_stack_bottom(void)
+{
+	static int started;
+	FILE* fp;
+
+	if (started) {
+		return;
+	}
+
+	started = 1;
+
+	fp = fopen("/proc/self/stat", "r");
+	assert(fp != NULL);
+
+	fscanf(fp,
+		"%*d %*s %*c %*d %*d %*d %*d %*d %*u"
+		"%*lu %*lu %*lu %*lu %*lu %*lu %*ld %*ld"
+		"%*ld %*ld %*ld %*ld %*llu %*lu %*ld"
+		"%*lu %*lu %*lu %lu",
+		&stack_bottom_address);
+	fclose(fp);
+
+	used_block = NULL;
+	start.next_block = &start;
+	free_block = &start;
+	start.size_of_block = 0;
 }
