@@ -14,6 +14,7 @@ typedef struct header {
 static head start;
 static head* free_block = &start;
 static head* used_block;
+uintptr_t stack_bottom_address;
 
 static void add_block_to_free_block_list(head* add_block)
 {
@@ -99,7 +100,7 @@ void* trash_malloc(size_t size_of_malloc)
 	}
 }
 
-static void scan_stack_region_and_mark(uintptr_t* start_p, uintptr_t* end_p)
+static void scan_region_and_mark(uintptr_t* start_p, uintptr_t* end_p)
 {
 	head* used_temp;
 	for (; start_p < end_p; start_p++) {
@@ -166,4 +167,46 @@ void trash_init_and_find_stack_bottom(void)
 	start.next_block = &start;
 	free_block = &start;
 	start.size_of_block = 0;
+}
+
+void trash_collection(void)
+{
+	uintptr_t stack_top_address;
+	extern char etext, end;
+	head *prev, *curr, *free_block_to_collect;
+
+	if (used_block == NULL) {
+		return;
+	}
+
+	uintptr_t end_of_text_segment = (uintptr_t)&etext;
+	uintptr_t end_of_bss = (uintptr_t)&end;
+	scan_region_and_mark(&end_of_text_segment, &end_of_bss);
+
+	asm volatile("movl %%ebp, %0" : "=r"(stack_top_address));
+	scan_region_and_mark(&stack_top_address, &stack_bottom_address);
+
+	scan_heap_region_and_mark();
+
+	for (prev = used_block, curr = (head*)(CLEAR_LSB_BITS(used_block->next_block));;
+		prev = curr, curr = (head*)(CLEAR_LSB_BITS(curr->next_block))) {
+	label_for_collection:
+		if (!((uintptr_t)(curr->next_block) & 1)) {
+			free_block_to_collect = curr;
+			curr = (head*)(CLEAR_LSB_BITS(curr->next_block));
+			add_block_to_free_block_list(free_block_to_collect);
+
+			if (used_block == free_block_to_collect) {
+				used_block = NULL;
+				return;
+			}
+
+			prev->next_block = (head*)((uintptr_t)curr | ((uintptr_t)curr->next_block & 1));
+			goto label_for_collection;
+		}
+		curr->next_block = (head*)(((uintptr_t)curr->next_block) & 0xfffffffe);
+		if (curr == used_block) {
+			break;
+		}
+	}
 }
