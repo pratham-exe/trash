@@ -1,20 +1,15 @@
+#include "trash.h"
 #include <assert.h>
-#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <unistd.h>
 #define MAX_ALLOWED_UNITS 4096
 #define CLEAR_LSB_BITS(pointer) (((uintptr_t)(pointer)) & 0xfffffffc)
 
-typedef struct header {
-	unsigned int size_of_block;
-	struct header* next_block;
-} head;
-
 static head start;
 static head* free_block = &start;
 static head* used_block;
-uintptr_t stack_bottom_address;
+unsigned long stack_bottom_address;
 
 static void add_block_to_free_block_list(head* add_block)
 {
@@ -171,7 +166,7 @@ void trash_init_and_find_stack_bottom(void)
 
 void trash_collection(void)
 {
-	uintptr_t stack_top_address;
+	unsigned int stack_top_address;
 	extern char etext, end;
 	head *prev, *curr, *free_block_to_collect;
 
@@ -183,8 +178,8 @@ void trash_collection(void)
 	uintptr_t end_of_bss = (uintptr_t)&end;
 	scan_region_and_mark(&end_of_text_segment, &end_of_bss);
 
-	asm volatile("movl %%ebp, %0" : "=r"(stack_top_address));
-	scan_region_and_mark(&stack_top_address, &stack_bottom_address);
+	asm("movl %%ebp, %0" : "=r"(stack_top_address));
+	scan_region_and_mark((uintptr_t*)&stack_top_address, &stack_bottom_address);
 
 	scan_heap_region_and_mark();
 
