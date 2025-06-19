@@ -2,9 +2,11 @@
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
+extern char** environ;
 #define MAX_ALLOWED_UNITS 4096
-#define CLEAR_LSB_BITS(pointer) (((uintptr_t)(pointer)) & 0xfffffffc)
+#define CLEAR_LSB_BITS(pointer) (((uintptr_t)(pointer)) & ~(uintptr_t)3)
 
 static head start;
 static head* free_block = &start;
@@ -84,7 +86,7 @@ void* trash_malloc(size_t size_of_malloc)
 				used_block->next_block = temp;
 			}
 
-			return (void*)temp + 1;
+			return (void*)(temp + 1);
 		}
 		if (temp == free_block) {
 			temp = request_more_memory_from_kernel(number_of_units);
@@ -99,12 +101,12 @@ static void scan_region_and_mark(uintptr_t* start_p, uintptr_t* end_p)
 {
 	head* used_temp;
 	for (; start_p < end_p; start_p++) {
-		uintptr_t* stack_temp = start_p;
+		uintptr_t stack_temp = *start_p;
 		used_temp = used_block;
 
 		do {
-			if (((uintptr_t*)(used_temp + 1) <= stack_temp)
-				&& (uintptr_t*)(used_temp + 1 + used_temp->size_of_block) > stack_temp) {
+			if (((uintptr_t)(used_temp + 1) <= stack_temp)
+				&& (uintptr_t)(used_temp + 1 + used_temp->size_of_block) > stack_temp) {
 				used_temp->next_block = (head*)(((uintptr_t)used_temp->next_block) | 1);
 				break;
 			}
@@ -139,7 +141,6 @@ static void scan_heap_region_and_mark(void)
 void trash_init_and_find_stack_bottom(void)
 {
 	static int started;
-	FILE* fp;
 
 	if (started) {
 		return;
@@ -147,17 +148,7 @@ void trash_init_and_find_stack_bottom(void)
 
 	started = 1;
 
-	fp = fopen("/proc/self/stat", "r");
-	assert(fp != NULL);
-
-	fscanf(fp,
-		"%*d %*s %*c %*d %*d %*d %*d %*d %*u"
-		"%*lu %*lu %*lu %*lu %*lu %*lu %*ld %*ld"
-		"%*ld %*ld %*ld %*ld %*llu %*lu %*ld"
-		"%*lu %*lu %*lu %lu",
-		&stack_bottom_address);
-	fclose(fp);
-
+	stack_bottom_address = (unsigned long)(environ);
 	used_block = NULL;
 	start.next_block = &start;
 	free_block = &start;
@@ -166,7 +157,7 @@ void trash_init_and_find_stack_bottom(void)
 
 void trash_collection(void)
 {
-	unsigned int stack_top_address;
+	unsigned long stack_top_address;
 	extern char etext, end;
 	head *prev, *curr, *free_block_to_collect;
 
@@ -178,8 +169,8 @@ void trash_collection(void)
 	uintptr_t end_of_bss = (uintptr_t)&end;
 	scan_region_and_mark(&end_of_text_segment, &end_of_bss);
 
-	asm("movl %%ebp, %0" : "=r"(stack_top_address));
-	scan_region_and_mark((uintptr_t*)&stack_top_address, &stack_bottom_address);
+	asm("movq %%rbp, %0" : "=r"(stack_top_address));
+	scan_region_and_mark((uintptr_t*)stack_top_address, (uintptr_t*)stack_bottom_address);
 
 	scan_heap_region_and_mark();
 
@@ -199,9 +190,22 @@ void trash_collection(void)
 			prev->next_block = (head*)((uintptr_t)curr | ((uintptr_t)curr->next_block & 1));
 			goto label_for_collection;
 		}
-		curr->next_block = (head*)(((uintptr_t)curr->next_block) & 0xfffffffe);
+		curr->next_block = (head*)(((uintptr_t)curr->next_block) & ~(uintptr_t)1);
 		if (curr == used_block) {
 			break;
 		}
 	}
+}
+
+void trash_mark_block_live(void)
+{
+	unsigned long stack_top_address;
+	extern char etext, end;
+
+	uintptr_t end_of_text_segment = (uintptr_t)&etext;
+	uintptr_t end_of_bss = (uintptr_t)&end;
+	scan_region_and_mark(&end_of_text_segment, &end_of_bss);
+
+	asm("movq %%rbp, %0" : "=r"(stack_top_address));
+	scan_region_and_mark((uintptr_t*)stack_top_address, (uintptr_t*)stack_bottom_address);
 }

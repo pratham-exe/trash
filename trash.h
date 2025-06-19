@@ -11,5 +11,6 @@ typedef struct header {
 void trash_init_and_find_stack_bottom(void);
 void* trash_malloc(size_t size_of_malloc);
 void trash_collection(void);
+void trash_mark_block_live(void);
 
 #endif
