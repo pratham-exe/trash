@@ -106,7 +106,7 @@ static void scan_region_and_mark(uintptr_t* start_p, uintptr_t* end_p)
 
 		do {
 			if (((uintptr_t)(used_temp + 1) <= stack_temp)
-				&& (uintptr_t)(used_temp + 1 + used_temp->size_of_block) > stack_temp) {
+				&& (uintptr_t)(used_temp + used_temp->size_of_block) > stack_temp) {
 				used_temp->next_block = (head*)(((uintptr_t)used_temp->next_block) | 1);
 				break;
 			}
@@ -124,12 +124,12 @@ static void scan_heap_region_and_mark(void)
 			continue;
 		}
 		for (payload = (uintptr_t*)(used_temp + 1);
-			payload < (uintptr_t*)(used_temp + 1 + used_temp->size_of_block); payload++) {
+			payload < (uintptr_t*)(used_temp + used_temp->size_of_block); payload++) {
 			uintptr_t* payload_temp = payload;
 			used_t = (head*)(CLEAR_LSB_BITS(used_temp->next_block));
 			do {
 				if ((used_t != used_temp) && ((uintptr_t*)(used_t + 1) <= payload_temp)
-					&& (uintptr_t*)(used_t + 1 + used_t->size_of_block) > payload_temp) {
+					&& (uintptr_t*)(used_t + used_t->size_of_block) > payload_temp) {
 					used_t->next_block = (head*)(((uintptr_t)used_t->next_block) | 1);
 					break;
 				}
@@ -169,7 +169,7 @@ void trash_collection(void)
 	uintptr_t end_of_bss = (uintptr_t)&end;
 	scan_region_and_mark(&end_of_text_segment, &end_of_bss);
 
-	asm("movq %%rbp, %0" : "=r"(stack_top_address));
+	asm("movq %%rsp, %0" : "=r"(stack_top_address));
 	scan_region_and_mark((uintptr_t*)stack_top_address, (uintptr_t*)stack_bottom_address);
 
 	scan_heap_region_and_mark();
@@ -206,6 +206,6 @@ void trash_mark_block_live(void)
 	uintptr_t end_of_bss = (uintptr_t)&end;
 	scan_region_and_mark(&end_of_text_segment, &end_of_bss);
 
-	asm("movq %%rbp, %0" : "=r"(stack_top_address));
+	asm("movq %%rsp, %0" : "=r"(stack_top_address));
 	scan_region_and_mark((uintptr_t*)stack_top_address, (uintptr_t*)stack_bottom_address);
 }
